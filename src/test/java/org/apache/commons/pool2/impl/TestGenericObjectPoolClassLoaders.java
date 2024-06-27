@@ -25,8 +25,102 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-  public class TestGenericObjectPoolClassLoaders {
+
+public class TestGenericObjectPoolClassLoaders {
+
     private static final URL BASE_URL =
             TestGenericObjectPoolClassLoaders.class.getResource(
                     "/org/apache/commons/pool2/impl/");
 
+    @Test
+    public void testContextClassLoader() throws Exception {
+
+        final ClassLoader savedClassloader =
+                Thread.currentThread().getContextClassLoader();
+
+        try {
+            final CustomClassLoader cl1 = new CustomClassLoader(1);
+            Thread.currentThread().setContextClassLoader(cl1);
+            final CustomClassLoaderObjectFactory factory1 =
+                    new CustomClassLoaderObjectFactory(1);
+            final GenericObjectPool<URL> pool1 = new GenericObjectPool<>(factory1);
+            pool1.setMinIdle(1);
+            pool1.setTimeBetweenEvictionRunsMillis(100);
+            int counter = 0;
+            while (counter < 50 && pool1.getNumIdle() != 1) {
+                Thread.sleep(100);
+                counter++;
+            }
+            assertEquals( 1, pool1.getNumIdle(),"Wrong number of idle objects in pool1");
+
+            // ---------------
+            final CustomClassLoader cl2 = new CustomClassLoader(2);
+            Thread.currentThread().setContextClassLoader(cl2);
+            final CustomClassLoaderObjectFactory factory2 =
+                    new CustomClassLoaderObjectFactory(2);
+            final GenericObjectPool<URL> pool2 =
+                    new GenericObjectPool<>(factory2);
+            pool2.setMinIdle(1);
+
+            pool2.addObject();
+            assertEquals( 1, pool2.getNumIdle(),"Wrong number of idle objects in pool2");
+            pool2.clear();
+
+            pool2.setTimeBetweenEvictionRunsMillis(100);
+
+            counter = 0;
+            while (counter < 50 && pool2.getNumIdle() != 1) {
+                Thread.sleep(100);
+                counter++;
+            }
+            assertEquals( 1, pool2.getNumIdle(),"Wrong number of  idle objects in pool2");
+
+            pool1.close();
+            pool2.close();
+        } finally {
+            Thread.currentThread().setContextClassLoader(savedClassloader);
+        }
+    }
+
+    private static class CustomClassLoaderObjectFactory extends
+            BasePooledObjectFactory<URL> {
+        private final int n;
+
+        CustomClassLoaderObjectFactory(final int n) {
+            this.n = n;
+        }
+
+        @Override
+        public URL create() throws Exception {
+            final URL url = Thread.currentThread().getContextClassLoader()
+                    .getResource("test" + n);
+            if (url == null) {
+                throw new IllegalStateException("Object should not be null");
+            }
+            return url;
+        }
+
+        @Override
+        public PooledObject<URL> wrap(final URL value) {
+            return new DefaultPooledObject<>(value);
+        }
+    }
+
+    private static class CustomClassLoader extends URLClassLoader {
+        private final int n;
+
+        CustomClassLoader(final int n) {
+            super(new URL[] { BASE_URL });
+            this.n = n;
+        }
+
+        @Override
+        public URL findResource(final String name) {
+            if (!name.endsWith(String.valueOf(n))) {
+                return null;
+            }
+
+            return super.findResource(name);
+        }
+    }
+}
