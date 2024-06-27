@@ -80,20 +80,6 @@ class EvictionTimer {
      * @param delay     Delay in milliseconds before task is executed.
      * @param period    Time in milliseconds between executions.
      */
-    static synchronized void schedule(
-            final BaseGenericObjectPool<?>.Evictor task, final long delay, final long period) {
-        if (null == executor) {
-            executor = new ScheduledThreadPoolExecutor(1, new EvictorThreadFactory());
-            executor.setRemoveOnCancelPolicy(true);
-            executor.scheduleAtFixedRate(new Reaper(), delay, period, TimeUnit.MILLISECONDS);
-        }
-        final WeakReference<Runnable> ref = new WeakReference<>(task);
-        final WeakRunner runner = new WeakRunner(ref);
-        final ScheduledFuture<?> scheduledFuture =
-                executor.scheduleWithFixedDelay(runner, delay, period, TimeUnit.MILLISECONDS);
-        task.setScheduledFuture(scheduledFuture);
-        taskMap.put(ref, runner);
-    }
 
     /**
      * Removes the specified eviction task from the timer.
@@ -105,25 +91,6 @@ class EvictionTimer {
      * @param unit      The units for the specified timeout.
      * @param restarting The state of the evictor.
      */
-    static synchronized void cancel(
-            final BaseGenericObjectPool<?>.Evictor evictor, final long timeout, final TimeUnit unit,
-            final boolean restarting) {
-        if (evictor != null) {
-            evictor.cancel();
-            remove(evictor);
-        }
-        if (!restarting && executor != null && taskMap.isEmpty()) {
-            executor.shutdown();
-            try {
-                executor.awaitTermination(timeout, unit);
-            } catch (final InterruptedException e) {
-                // Swallow
-                // Significant API changes would be required to propagate this
-            }
-            executor.setCorePoolSize(0);
-            executor = null;
-        }
-    }
 
     /**
      * Removes evictor from the task set and executor.
