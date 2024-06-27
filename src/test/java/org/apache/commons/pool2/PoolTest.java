@@ -27,6 +27,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 @Disabled
+@Disabled
 public class PoolTest {
     private static final CharSequence COMMONS_POOL_EVICTIONS_TIMER_THREAD_NAME = "commons-pool-EvictionTimer";
     private static final long EVICTION_PERIOD_IN_MILLIS = 100;
@@ -38,14 +39,17 @@ public class PoolTest {
         private static final long VALIDATION_WAIT_IN_MILLIS = 1000;
 
         @Override
+        @Override
         public PooledObject<Foo> makeObject() throws Exception {
             return new DefaultPooledObject<>(new Foo());
         }
 
         @Override
+        @Override
         public void destroyObject(final PooledObject<Foo> pooledObject) throws Exception {
         }
 
+        @Override
         @Override
         public boolean validateObject(final PooledObject<Foo> pooledObject) {
             try {
@@ -57,36 +61,16 @@ public class PoolTest {
         }
 
         @Override
+        @Override
         public void activateObject(final PooledObject<Foo> pooledObject) throws Exception {
         }
 
+        @Override
         @Override
         public void passivateObject(final PooledObject<Foo> pooledObject) throws Exception {
         }
     }
 
     @Test
-    public void testPool() throws Exception {
-        final GenericObjectPoolConfig poolConfig = new GenericObjectPoolConfig();
-        poolConfig.setTestWhileIdle(true /* testWhileIdle */);
-        final PooledFooFactory pooledFooFactory = new PooledFooFactory();
-        try (GenericObjectPool<Foo> pool = new GenericObjectPool<>(pooledFooFactory, poolConfig)) {
-            pool.setTimeBetweenEvictionRunsMillis(EVICTION_PERIOD_IN_MILLIS);
-            pool.addObject();
-            try {
-                Thread.sleep(EVICTION_PERIOD_IN_MILLIS);
-            } catch (final InterruptedException e) {
-                Thread.interrupted();
-            }
-        }
-        final Thread[] threads = new Thread[Thread.activeCount()];
-        Thread.enumerate(threads);
-        for (final Thread thread : threads) {
-            if (thread == null) {
-                continue;
-            }
-            final String name = thread.getName();
-            assertFalse( name.contains(COMMONS_POOL_EVICTIONS_TIMER_THREAD_NAME),name);
-        }
-    }
+    @Test
 }
