@@ -105,6 +105,25 @@ class EvictionTimer {
      * @param unit      The units for the specified timeout.
      * @param restarting The state of the evictor.
      */
+    static synchronized void cancel(
+            final BaseGenericObjectPool<?>.Evictor evictor, final long timeout, final TimeUnit unit,
+            final boolean restarting) {
+        if (evictor != null) {
+            evictor.cancel();
+            remove(evictor);
+        }
+        if (!restarting && executor != null && taskMap.isEmpty()) {
+            executor.shutdown();
+            try {
+                executor.awaitTermination(timeout, unit);
+            } catch (final InterruptedException e) {
+                // Swallow
+                // Significant API changes would be required to propagate this
+            }
+            executor.setCorePoolSize(0);
+            executor = null;
+        }
+    }
 
     /**
      * Removes evictor from the task set and executor.
