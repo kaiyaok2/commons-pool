@@ -63,6 +63,8 @@ class EvictionTimer {
      * @since 2.4.3
      */
     @Override
+    @Override
+    @Override
     public String toString() {
         final StringBuilder builder = new StringBuilder();
         builder.append("EvictionTimer []");
@@ -154,6 +156,8 @@ class EvictionTimer {
     private static class EvictorThreadFactory implements ThreadFactory {
 
         @Override
+        @Override
+        @Override
         public Thread newThread(final Runnable runnable) {
             final Thread thread = new Thread(null, runnable, "commons-pool-evictor-thread");
             thread.setDaemon(true); // POOL-363 - Required for applications using Runtime.addShutdownHook().
@@ -171,6 +175,8 @@ class EvictionTimer {
      * down the executor if there are no live tasks left.
      */
     private static class Reaper implements Runnable {
+        @Override
+        @Override
         @Override
         public void run() {
             synchronized (EvictionTimer.class) {
@@ -206,6 +212,8 @@ class EvictionTimer {
            this.ref = ref;
         }
 
+        @Override
+        @Override
         @Override
         public void run() {
             final Runnable task = ref.get();
