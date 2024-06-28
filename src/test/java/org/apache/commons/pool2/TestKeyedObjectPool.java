@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.NoSuchElementException;
 
 import org.apache.commons.pool2.impl.DefaultPooledObject;
+import org.apache.commons.pool2.impl.GenericKeyedObjectPool;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -177,6 +178,93 @@ public abstract class TestKeyedObjectPool {
         pool.close();
     }
 
+    @Test
+    public void testKPOFBorrowObjectUsages() throws Exception {
+        final FailingKeyedPooledObjectFactory factory = new FailingKeyedPooledObjectFactory();
+        final KeyedObjectPool<Object,Object> pool;
+        try {
+            pool = makeEmptyPool(factory);
+        } catch(final UnsupportedOperationException uoe) {
+            return; // test not supported
+        }
+        final List<MethodCall> expectedMethods = new ArrayList<>();
+        Object obj;
+
+        if (pool instanceof GenericKeyedObjectPool) {
+            ((GenericKeyedObjectPool<Object,Object>) pool).setTestOnBorrow(true);
+        }
+
+        /// Test correct behavior code paths
+
+        // existing idle object should be activated and validated
+        pool.addObject(KEY);
+        clear(factory, expectedMethods);
+        obj = pool.borrowObject(KEY);
+        expectedMethods.add(new MethodCall("activateObject", KEY, ZERO));
+        expectedMethods.add(new MethodCall("validateObject", KEY, ZERO).returned(Boolean.TRUE));
+        assertEquals(expectedMethods, factory.getMethodCalls());
+        pool.returnObject(KEY, obj);
+
+        //// Test exception handling of borrowObject
+        reset(pool, factory, expectedMethods);
+
+        // makeObject Exceptions should be propagated to client code from borrowObject
+        factory.setMakeObjectFail(true);
+        try {
+            obj = pool.borrowObject(KEY);
+            fail("Expected borrowObject to propagate makeObject exception.");
+        } catch (final PrivateException pe) {
+            // expected
+        }
+        expectedMethods.add(new MethodCall("makeObject", KEY));
+        assertEquals(expectedMethods, factory.getMethodCalls());
+
+
+        // when activateObject fails in borrowObject, a new object should be borrowed/created
+        reset(pool, factory, expectedMethods);
+        pool.addObject(KEY);
+        clear(factory, expectedMethods);
+
+        factory.setActivateObjectFail(true);
+        expectedMethods.add(new MethodCall("activateObject", KEY, obj));
+        try {
+            pool.borrowObject(KEY);
+            fail("Expecting NoSuchElementException");
+        } catch (final NoSuchElementException e) {
+            //Activate should fail
+        }
+        // After idle object fails validation, new on is created and activation
+        // fails again for the new one.
+        expectedMethods.add(new MethodCall("makeObject", KEY).returned(ONE));
+        expectedMethods.add(new MethodCall("activateObject", KEY, ONE));
+        TestObjectPool.removeDestroyObjectCall(factory.getMethodCalls()); // The exact timing of destroyObject is flexible here.
+        assertEquals(expectedMethods, factory.getMethodCalls());
+
+        // when validateObject fails in borrowObject, a new object should be borrowed/created
+        reset(pool, factory, expectedMethods);
+        pool.addObject(KEY);
+        clear(factory, expectedMethods);
+
+        factory.setValidateObjectFail(true);
+        // testOnBorrow is on, so this will throw when the newly created instance
+        // fails validation
+        try {
+            pool.borrowObject(KEY);
+            fail("Expecting NoSuchElementException");
+        } catch (final NoSuchElementException ex) {
+            // expected
+        }
+        // Activate, then validate for idle instance
+        expectedMethods.add(new MethodCall("activateObject", KEY, ZERO));
+        expectedMethods.add(new MethodCall("validateObject", KEY, ZERO));
+        // Make new instance, activate succeeds, validate fails
+        expectedMethods.add(new MethodCall("makeObject", KEY).returned(ONE));
+        expectedMethods.add(new MethodCall("activateObject", KEY, ONE));
+        expectedMethods.add(new MethodCall("validateObject", KEY, ONE));
+        TestObjectPool.removeDestroyObjectCall(factory.getMethodCalls());
+        assertEquals(expectedMethods, factory.getMethodCalls());
+        pool.close();
+    }
 
     @Test
     public void testKPOFReturnObjectUsages() throws Exception {
