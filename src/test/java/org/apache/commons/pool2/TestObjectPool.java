@@ -17,6 +17,7 @@
 package org.apache.commons.pool2;
 
 
+import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.commons.pool2.impl.SoftReferenceObjectPool;
 import org.junit.jupiter.api.Test;
 
@@ -168,6 +169,89 @@ public abstract class TestObjectPool {
         pool.close();
     }
 
+    @Test
+    public void testPOFBorrowObjectUsages() throws Exception {
+        final MethodCallPoolableObjectFactory factory = new MethodCallPoolableObjectFactory();
+        final ObjectPool<Object> pool;
+        try {
+            pool = makeEmptyPool(factory);
+        } catch (final UnsupportedOperationException uoe) {
+            return; // test not supported
+        }
+        if (pool instanceof GenericObjectPool) {
+            ((GenericObjectPool<Object>) pool).setTestOnBorrow(true);
+        }
+        final List<MethodCall> expectedMethods = new ArrayList<>();
+        Object obj;
+
+        /// Test correct behavior code paths
+
+        // existing idle object should be activated and validated
+        pool.addObject();
+        clear(factory, expectedMethods);
+        obj = pool.borrowObject();
+        expectedMethods.add(new MethodCall("activateObject", ZERO));
+        expectedMethods.add(new MethodCall("validateObject", ZERO).returned(Boolean.TRUE));
+        assertEquals(expectedMethods, factory.getMethodCalls());
+        pool.returnObject(obj);
+
+        //// Test exception handling of borrowObject
+        reset(pool, factory, expectedMethods);
+
+        // makeObject Exceptions should be propagated to client code from borrowObject
+        factory.setMakeObjectFail(true);
+        try {
+            obj = pool.borrowObject();
+            fail("Expected borrowObject to propagate makeObject exception.");
+        } catch (final PrivateException pe) {
+            // expected
+        }
+        expectedMethods.add(new MethodCall("makeObject"));
+        assertEquals(expectedMethods, factory.getMethodCalls());
+
+
+        // when activateObject fails in borrowObject, a new object should be borrowed/created
+        reset(pool, factory, expectedMethods);
+        pool.addObject();
+        clear(factory, expectedMethods);
+
+        factory.setActivateObjectFail(true);
+        expectedMethods.add(new MethodCall("activateObject", obj));
+        try {
+            pool.borrowObject();
+            fail("Expecting NoSuchElementException");
+        } catch (final NoSuchElementException ex) {
+            // Expected - newly created object will also fail to activate
+        }
+        // Idle object fails activation, new one created, also fails
+        expectedMethods.add(new MethodCall("makeObject").returned(ONE));
+        expectedMethods.add(new MethodCall("activateObject", ONE));
+        removeDestroyObjectCall(factory.getMethodCalls()); // The exact timing of destroyObject is flexible here.
+        assertEquals(expectedMethods, factory.getMethodCalls());
+
+        // when validateObject fails in borrowObject, a new object should be borrowed/created
+        reset(pool, factory, expectedMethods);
+        pool.addObject();
+        clear(factory, expectedMethods);
+
+        factory.setValidateObjectFail(true);
+        expectedMethods.add(new MethodCall("activateObject", ZERO));
+        expectedMethods.add(new MethodCall("validateObject", ZERO));
+        try {
+            pool.borrowObject();
+        } catch (final NoSuchElementException ex) {
+            // Expected - newly created object will also fail to validate
+        }
+        // Idle object is activated, but fails validation.
+        // New instance is created, activated and then fails validation
+        expectedMethods.add(new MethodCall("makeObject").returned(ONE));
+        expectedMethods.add(new MethodCall("activateObject", ONE));
+        expectedMethods.add(new MethodCall("validateObject", ONE));
+        removeDestroyObjectCall(factory.getMethodCalls()); // The exact timing of destroyObject is flexible here.
+        // Second activate and validate are missing from expectedMethods
+        assertTrue(factory.getMethodCalls().containsAll(expectedMethods));
+        pool.close();
+    }
 
     @Test
     public void testPOFReturnObjectUsages() throws Exception {
